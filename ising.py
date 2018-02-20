@@ -75,15 +75,13 @@ for j in range(Tsize):
     eArr[j]=meanEnergy(Mag,H,mu,J)
     MArr[j]=np.abs(Mag.sum(axis=(1,2)).mean())
     #print(kT, autoCorr(Mag[50:].sum(axis=(1,2)),(arrSize-51))-np.exp(-1.))
-    initTau=arrSize-50
-    plotTau=np.linspace(1,arrSize-51,10, dtype=int)
-    print(plotTau)
+    initTau=1
+    plotTau=np.arange(1,10)
     ax2.plot(plotTau, np.log(autoCorrV(inMag=Mag[50:].sum(axis=(1,2)),tau=plotTau)))
-    while initTau>50: 
-        if autoCorr(Mag[50:].sum(axis=(1,2)),initTau) -np.exp(-1.) <0:
-            tauC[j]=findTauc(Mag[50:].sum(axis=(1,2)),initTau)
+    for tau in range(1,41):
+        if autoCorr(Mag[50:].sum(axis=(1,2)),tau)<np.exp(-1):
+            tauC[j]=tau-0.5
             break
-        else: initTau-=1
       
 fig,ax=plt.subplots()
 ax.plot(kTarr,eArr,label='mean energy')
