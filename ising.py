@@ -6,7 +6,7 @@ N x N lattice
 """
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy
+import scipy.optimize as op
 
 def movingAvg(arr,n):
     csum=arr.cumsum()
@@ -35,9 +35,6 @@ def meanEnergy(Mag,H,mu,J):
     eng=-1.*Mag*mu*H-J/2*Mag*(np.roll(Mag,1, axis=1)+np.roll(Mag, -1,axis=1)+np.roll(Mag,1, axis=2)+np.roll(Mag,-1,axis=2))
     return(eng.sum(axis=(1,2)).mean())
 
-def meanMag(Mag):
-    return(np.abs(Mag.sum(axis=(1,2)).mean()))
-
 def makeM(N,p):
     if p==1:
         return(np.ones((N,N)))
@@ -46,19 +43,23 @@ def makeM(N,p):
         M=(np.random.permutation(M)).reshape((N,N))
         return(M)
 
-def autoCorr(MMag,tau):
+def autoCorr(inMag,tau):
+    MMag=inMag-inMag.mean()
     return(np.mean(MMag[tau:]*MMag[:-tau])/np.mean(MMag**2))
 
-def findTauc(MMag,arrSize):
-    return(scipy.optimize.brentq(lambda x: ( lambda MMag,tau: autoCorr(MMag,tau)-np.exp(-1)  )(MMag, x),0,arrSize))
+autoCorrV=np.vectorize(autoCorr, excluded=[ 'inMag' ])
 
-N=16
-Tsize=10
+def findTauc(inMag,initTau):
+    return(op.brentq((lambda tau: autoCorr(inMag, int(tau)) - np.exp(-1.)),1,int(initTau)))
+
+N=10
+Tsize=30
 H,mu,J=0,1,1
-kTarr=np.linspace(1,6,Tsize)*J
+kTarr=np.linspace(2,4,Tsize)*J
 eArr=np.zeros(Tsize)
 MArr=np.zeros(Tsize)
-arrSize=200
+tauC=np.zeros(Tsize)
+arrSize=300
 fig1,ax1=plt.subplots()
 fig2,ax2=plt.subplots()
 for j in range(Tsize):
@@ -68,15 +69,27 @@ for j in range(Tsize):
     for i in range(arrSize):
         Mag[i]=M
         M=MCstep(N,M)
-    #plt.plot(Mag)
-    if j%2==0: 
+    if j%int(Tsize/5)==0:
         Mplot=movingAvg(Mag.sum(axis=(1,2)),10)
         ax1.plot(np.sign(Mplot[0])*Mplot)
     eArr[j]=meanEnergy(Mag,H,mu,J)
-    MArr[j]=meanMag(Mag)
-    tauArr=np.arange(19,100,10)
+    MArr[j]=np.abs(Mag.sum(axis=(1,2)).mean())
+    #print(kT, autoCorr(Mag[50:].sum(axis=(1,2)),(arrSize-51))-np.exp(-1.))
+    initTau=arrSize-50
+    plotTau=np.linspace(1,arrSize-51,10, dtype=int)
+    print(plotTau)
+    ax2.plot(plotTau, np.log(autoCorrV(inMag=Mag[50:].sum(axis=(1,2)),tau=plotTau)))
+    while initTau>50: 
+        if autoCorr(Mag[50:].sum(axis=(1,2)),initTau) -np.exp(-1.) <0:
+            tauC[j]=findTauc(Mag[50:].sum(axis=(1,2)),initTau)
+            break
+        else: initTau-=1
+      
 fig,ax=plt.subplots()
 ax.plot(kTarr,eArr,label='mean energy')
 fig,ax=plt.subplots()
 ax.plot(kTarr,MArr,label='mean magnetisation')
+pfig,ax=plt.subplots()
+ax.plot(kTarr,tauC,label='mean magnetisation')
 plt.show()
+
