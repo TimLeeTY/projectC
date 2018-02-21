@@ -1,5 +1,6 @@
 """
 Project C: The Ising Model of a Ferromagnet
+                                                                                                                                                                                                                                                                                                                                                                                                                       ukjjhC: The Ising Model of a Ferromagnet
 Finds properties of a Ferromagnet using the Ising model, sampling spins at random and calculating the energy required to flip each spin
 
 N x N lattice
@@ -21,18 +22,17 @@ def DelEnergy(M, H, mu, J, i, j, kT):
     coup = 2*s*(M[i+1, j]+M[i-1, j]+M[i, j-1]+M[i, j+1])  # spin coupling term
     ext = 2*mu*H*s  # field energy
     # print(ext+coup)
-    return(np.random.rand(1) < np.exp(-1*max([ext+coup, 0])/(kT)))
+    return((ext+coup < 0) or (np.random.rand(1) < np.exp(-1*(ext+coup)/(kT))))
 
 
 def MCstep(N, M):
     """performs each step of the MC technique, each sampling N^2=Ntot points in the lattice"""
     """on average covers ~63 lattice sites (see readme for calculation)"""
-    Ntot = N**2
-    for k in range(Ntot):
-        [i, j] = np.random.choice(np.arange(N)-1, [2, 1])
-        # i=np.random.choice(range(1,N-1))
-        if DelEnergy(M, H, mu, J, i, j, kT):
-            M[i, j] *= -1
+    samples = np.random.permutation(
+        np.array([[i, j] for i in range(N) for j in range(N)])-1)
+    for sample in samples:
+        if DelEnergy(M, H, mu, J, sample[0], sample[1], kT):
+            M[sample[0], sample[1]] *= -1
     return(M)
 
 
@@ -117,3 +117,4 @@ ax.plot(kTarr, MArr, label='mean magnetisation')
 # fig,ax=plt.subplots()
 #ax.plot(kTarr,tauC,label='mean magnetisation')
 plt.show()
+
