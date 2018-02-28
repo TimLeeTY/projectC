@@ -44,17 +44,22 @@ def MCStep(N, M, mu, J, kT):
     return(M)
 
 
-def MCStepFast(n, M, mu, J, KT):
-    """Performs each step of the MC technique, each sampling N^2=Ntot points in the lattice"""
+def MCStepFast(H, mu, J, KT, arrSize):
+    Mag = np.zeros((arrSize, N, N))
+    Mag[0] = (makeM(N, 1))
+    flipP = np.ones(5)
     if H == 0:
-        flipP = np.ones(5)
-        for i in range(3,5):
+        for i in range(3, 5):
             flipP[i] = np.exp(-2 * (2 * i - 4) / kT)   # cache the probability of flipping for each spin configuration
-    samples = np.random.choice(np.arange(N)-1, (N**2, 2))
-    for [i, j] in samples:
-        if np.random.rand() < flipP[int((M[i, j] * (M[i + 1, j] + M[i - 1, j] + M[i, j - 1] + M[i, j + 1]))/2+2)]:
-            M[i, j] *= -1
-    return(M)
+    for arr in range(1, arrSize):
+        """Performs each step of the MC technique, each sampling N^2=Ntot points in the lattice"""
+        samples = np.random.choice(np.arange(N)-1, (N**2, 2))
+        Mag[arr] = Mag[arr - 1]
+        for [i, j] in samples:
+            if np.random.rand() < flipP[int((Mag[arr, i, j] * (Mag[arr, i + 1, j]
+                                             + Mag[arr, i - 1, j] + Mag[arr, i, j - 1] + Mag[arr, i, j + 1]))/2+2)]:
+                Mag[arr, i, j] *= -1
+    return(Mag)
 
 
 def meanEnergy(Mag, H, mu, J):
@@ -93,13 +98,14 @@ def findTauc(inMag, initTau):
 
 autoCorrV = np.vectorize(autoCorr, excluded=['inMag'])
 
-NArr = np.arange(8, 15)                 # Array that holds the values of N to be used
+NArr = np.arange(10, 21, 2)                 # Array that holds the values of N to be used
 NSize = len(NArr)
-TSize = 20                              # Number of samples of temperature to be used
+nRelax = 50
+TSize = 30                              # Number of samples of temperature to be used
 H, mu, J = 0, 1, 1
-kTarr = np.linspace(1.5, 3, TSize) * J  # kT scaled relative to J
-nSamp = 1                               # Number of samples to run
-arrSize = 1000                           # Number of steps to take for each M-C simulation
+kTarr = np.linspace(1, 4, TSize) * J  # kT scaled relative to J
+nSamp = 4                               # Number of samples to run
+arrSize = 150                           # Number of steps to take for each M-C simulation
 eArr = np.zeros((nSamp, TSize, 2))
 MArr = np.zeros((nSamp, TSize))
 CMaxArr = np.zeros(NSize)
@@ -110,36 +116,27 @@ fig1, ax1 = plt.subplots()
 fig2, ax2 = plt.subplots()
 fig3, ax3 = plt.subplots()
 fig4, ax4 = plt.subplots()
+fig5, ax5 = plt.subplots()
 
 for l in range(NSize):
     N = NArr[l]
     for j in range(TSize):
         kT = kTarr[j]
         for i in range(nSamp):
-            tnsamp0 = time.clock()
-            Mag = np.zeros((arrSize, N, N))
-            Mag[0] = (makeM(N, 1))
             t0 = time.clock()
-            for k in range(1, arrSize):
-                Mag[k] = MCStepFast(N, Mag[k - 1], mu, J, kT)
+            Mag = MCStepFast(H, mu, J, kT, arrSize)
             tf = time.clock()
-            inMag = Mag[50:].sum(axis=(1, 2))
-            """
-            # print autocorrelaion as a funcion of tau
-            if np.abs(kT - 2.6) < 0.1:
-                ax3.plot(np.log(np.abs(
-                    autoCorr(inMag=inMag, tauArr=np.arange(1, 41)))))
-            """
-            eArr[i, j] = (meanEnergy(Mag[50:], H, mu, J))
+            inMag = Mag[nRelax:].sum(axis=(1, 2))
+            eArr[i, j] = (meanEnergy(Mag[nRelax:], H, mu, J))
             MArr[i, j] = np.abs(inMag.mean())
-            for tau in range(1, 41):
+            for tau in range(1, arrSize-201):
                 if np.abs(autoCorr(inMag, tau)) < np.exp(-1):
                     tauC[i, j] = tau - 0.5
                     break
-            tnsampf = time.clock()
-            print(tnsampf - tnsamp0, tf - t0)
+            tf2 = time.clock()
+            print(tf - t0, tf2 - t0)
     C = (eArr[:, :, 1])**2/(kT**2)
-    if N % 2 == 0:
+    if N % 1 == 0:
         ax1.errorbar(kTarr, tauC.mean(axis=0), tauC.std(axis=0), label=r'$N=%i$' % N)
         ax2.errorbar(kTarr, eArr[:, :, 0].mean(axis=0), eArr[:, :, 0].std(axis=0), label=r'$N=%i$' % N)
         ax3.errorbar(kTarr, MArr.mean(axis=0), MArr.std(axis=0), label=r'$N=%i$' % N)
@@ -151,6 +148,5 @@ ax2.legend()
 ax3.legend()
 ax4.legend()
 
-fig5, ax5 = plt.subplots()
 ax5.errorbar(NArr, CMaxArr, kTarr[1]-kTarr[0])
 plt.show()
