@@ -10,7 +10,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize as op
 import multiprocessing as mp
-import time
 
 
 def movingAvg(arr, n):
@@ -124,18 +123,18 @@ def mainRun(kT):
 
 
 nRelax = 50
-nSamp = 4                               # Number of samples to run
-TSize = 20                              # Number of samples of temperature to be used
+nSamp = 5                               # Number of samples to run
+TSize = 30                              # Number of samples of temperature to be used
 H, mu, J = 0, 1, 1
-kTArr = np.linspace(1, 4, TSize) * J    # kT scaled relative to J
-arrSize = 400                           # Number of steps to take for each M-C simulation
+kTArr = np.linspace(1.5, 3.5, TSize) * J    # kT scaled relative to J
+arrSize = 500                           # Number of steps to take for each M-C simulation
 fig1, ax1 = plt.subplots()
 fig2, ax2 = plt.subplots()
 fig3, ax3 = plt.subplots()
 fig4, ax4 = plt.subplots()
 fig5, ax5 = plt.subplots()
 
-NArr = np.arange(2, 15, 1)              # Array that holds the values of N to be use
+NArr = np.arange(5, 20, 2)              # Array that holds the values of N to be use
 eArr = np.zeros((nSamp, TSize))
 sigEArr = np.zeros((nSamp, TSize))
 MArr = np.zeros((nSamp, TSize))
@@ -153,7 +152,7 @@ for l in range(len(NArr)):
     tauC = tauCArr[:, l]
     for i in range(nSamp):
         CMaxArr[i, l] = kTArr[np.argmax(CArr[i, l])]
-    if NArr[l] % 2 == 0:
+    if l % 2 == 0:
         ax1.errorbar(kTArr, tauC.mean(axis=0), tauC.std(axis=0), label=r'$N=%i$' % N)
         ax4.errorbar(kTArr, C.mean(axis=0), C.std(axis=0), label=r'$N=%i$' % N)
         ax3.errorbar(kTArr, M.mean(axis=0), M.std(axis=0), label=r'$N=%i$' % N)
@@ -161,13 +160,13 @@ x0 = [2, 4, 0.5]
 xOpt = op.minimize(lambda x: fitTc(CMaxArr.mean(axis=0), x, NArr), x0)
 print(xOpt.x)
 try:
-    xCF, xCov = op.curve_fit((lambda NArr, Tc_inf, a, v: Tc_inf + a * NArr**(-1/v)), NArr, CMaxArr.mean(axis=0), x0,
-                             sigma=CMaxArr.std(axis=0))
+    xCF, xCov = op.curve_fit((lambda NArr, Tc_inf, a, v: Tc_inf + a * NArr**(-1/v)), NArr, CMaxArr.mean(axis=0), x0)
     x0 = xCF
 except RuntimeError:
     x0 = xOpt.x
 
 print(x0)
+
 ax5.plot(NArr, x0[0] + x0[1] * NArr**(-1/x0[2]))
 ax5.plot(NArr, 2/np.log(1 + np.sqrt(2))*np.ones(len(NArr)))
 ax5.errorbar(NArr, CMaxArr.mean(axis=0), CMaxArr.std(axis=0))
@@ -188,6 +187,7 @@ for j in range(TSize):
 print('N= {:d}, T_c= {:.2f}±{:.2f}'.format(N, CMaxArr.mean(), CMaxArr.std()))
 ax3.errorbar(kTArr, MArr.mean(axis=0), MArr.std(axis=0), label=r'$N=%i$' % N)
 ax2.errorbar(kTArr, eArr.mean(axis=0), eArr.std(axis=0), label=r'$N=%i$' % N)
+
 for l in range(len(NArr)):
     N = NArr[l]
     for j in range(TSize):
@@ -198,14 +198,14 @@ for l in range(len(NArr)):
             Mag = MCStepFast(N, H, mu, J, kT, arrSize)
             #tf = time.clock()
             inMag = Mag[nRelax:].sum(axis=(1, 2))
-            sigEArr[i, j] = (meanEnergy(Mag[nRelax:], H, mu, J))[1]    # Standard deviation in total energy
+            sigEArr[i, j] = (meanEnergy(Mag[nRelax:], H, mu, J))[1]/kT    # Standard deviation in total energy
             for tau in range(1, arrSize-nRelax-1):
                 if np.abs(autoCorr(inMag, tau)) < np.exp(-1):
                     tauC[i, j] = tau - 0.5
                     break
             #tf2 = time.clock()
             #print(tf - t0, tf2 - t0)
-    C = (sigEArr**2)/(kT**2)                                           # Heat capacity from
+    C = (sigEArr**2)                                           # Heat capacity from
     if N % 2 == 0:
         ax1.errorbar(kTArr, tauC.mean(axis=0), tauC.std(axis=0), label=r'$N=%i$' % N)
         ax4.errorbar(kTArr, C.mean(axis=0), C.std(axis=0), label=r'$N=%i$' % N)
