@@ -106,6 +106,7 @@ def mainRun(kT):
     sigEArr = np.zeros((nSamp, NSize))
     MArr = np.zeros((nSamp, NSize))
     tauC = np.zeros((nSamp, NSize))
+    chiArr = np.zeros((nSamp, NSize))
     for i in range(nSamp):
         for j in range(NSize):
             N = NArr[j]
@@ -114,47 +115,50 @@ def mainRun(kT):
             inMag = Mag[nRelax:].sum(axis=(1, 2))
             sigEArr[i, j] = (meanEnergy(Mag[nRelax:], H, mu, J))[1]    # Standard deviation in total energy
             MArr[i, j] = np.abs(inMag.mean()) / N**2
+            chiArr[i, j] = (inMag.var()) / kT
             for tau in range(1, arrSize-nRelax-1):
                 if np.abs(autoCorr(inMag, tau)) < np.exp(-1):
                     tauC[i, j] = tau - 0.5
                     break
     C = (sigEArr**2)/(kT**2)
-    return([C, tauC, MArr])
+    return([C, tauC, MArr, chiArr])
 
 
-nRelax = 800
-nSamp = 1                               # Number of samples to run
+nRelax = 300
+nSamp = 4                               # Number of samples to run
 TSize = 100                              # Number of samples of temperature to be used
 H, mu, J = 0, 1, 1
 kTArr = np.linspace(1.5, 3, TSize) * J    # kT scaled relative to J
-arrSize = 1200                           # Number of steps to take for each M-C simulation
+arrSize = 600                           # Number of steps to take for each M-C simulation
 fig1, ax1 = plt.subplots()
 fig2, ax2 = plt.subplots()
 fig3, ax3 = plt.subplots()
 fig4, ax4 = plt.subplots()
 fig5, ax5 = plt.subplots()
+fig6, ax6 = plt.subplots()
 
-NArr = np.arange(10, 50, 10)              # Array that holds the values of N to be use
+NArr = np.arange(8, 15, 1)              # Array that holds the values of N to be use
 eArr = np.zeros((nSamp, TSize))
 sigEArr = np.zeros((nSamp, TSize))
-MArr = np.zeros((nSamp, TSize))
 CMaxArr = np.zeros((len(NArr)))
 
 p = mp.Pool(len(kTArr))
 out = np.moveaxis(np.array(p.map(mainRun, kTArr)), 0, -1)
 print(out.shape)
-[CArr, tauCArr, MArr] = out
+[CArr, tauCArr, MArr, chiArr] = out
 
 for l in range(len(NArr)):
     N = NArr[l]
     C = CArr[:, l]
     M = MArr[:, l]
+    Chi = chiArr[:, l]
     tauC = tauCArr[:, l]
     CMaxArr[l] = kTArr[np.argmax(C.mean(axis=0))]
     if l % 1 == 0:
         ax1.errorbar(kTArr, tauC.mean(axis=0), tauC.std(axis=0), label=r'$N=%i$' % N)
         ax4.errorbar(kTArr, C.mean(axis=0), C.std(axis=0), label=r'$N=%i$' % N)
         ax3.errorbar(kTArr, M.mean(axis=0), M.std(axis=0), label=r'$N=%i$' % N)
+        ax6.errorbar(kTArr, Chi.mean(axis=0), Chi.std(axis=0), label=r'$N=%i$' % N)
 x0 = [2, 4, 0.5]
 xOpt = op.minimize(lambda x: fitTc(CMaxArr, x, NArr), x0)
 print(xOpt.x)
