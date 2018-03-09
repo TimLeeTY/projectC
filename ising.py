@@ -103,33 +103,33 @@ def fitTc(Tc, x, NArr):
 
 def mainRun(kT):
     NSize = len(NArr)
-    sigEArr = np.zeros((nSamp, NSize))
-    MArr = np.zeros((nSamp, NSize))
-    tauC = np.zeros((nSamp, NSize))
-    chiArr = np.zeros((nSamp, NSize))
-    for i in range(nSamp):
-        for j in range(NSize):
-            N = NArr[j]
-            print('N= %i, kT= %f' % (N, kT))
-            Mag = MCStepFast(N, H, mu, J, kT, arrSize)
-            inMag = Mag[nRelax:].sum(axis=(1, 2))
-            sigEArr[i, j] = (meanEnergy(Mag[nRelax:], H, mu, J))[1]    # Standard deviation in total energy
-            MArr[i, j] = np.abs(inMag.mean()) / N**2
-            chiArr[i, j] = (inMag.var()) / kT
-            for tau in range(1, arrSize-nRelax-1):
-                if np.abs(autoCorr(inMag, tau)) < np.exp(-1):
-                    tauC[i, j] = tau - 0.5
-                    break
+    sigEArr = np.zeros((NSize))
+    MArr = np.zeros((NSize, 2))
+    tauC = np.zeros((NSize))
+    chiArr = np.zeros((NSize))
+    for j in range(NSize):
+        N = NArr[j]
+        print('N= %i, kT= %f' % (N, kT))
+        nRelax = 20 * N
+        arrSize = 2 * nRelax
+        Mag = MCStepFast(N, H, mu, J, kT, arrSize)
+        inMag = Mag[nRelax:].sum(axis=(1, 2))
+        sigEArr[j] = (meanEnergy(Mag[nRelax:], H, mu, J))[1]    # Standard deviation in total energy
+        MArr[j] = (np.abs(inMag).mean() / N**2, np.abs(inMag).std() / N**2)
+        chiArr[j] = (inMag.var()) / kT
+        for tau in range(1, arrSize-nRelax-1):
+            if np.abs(autoCorr(inMag, tau)) < np.exp(-1):
+                tauC[j] = tau - 0.5
+                break
     C = (sigEArr**2)/(kT**2)
+
     return([C, tauC, MArr, chiArr])
 
 
-nRelax = 300
-nSamp = 4                               # Number of samples to run
+nSamp = 1                                # Number of samples to run
 TSize = 100                              # Number of samples of temperature to be used
 H, mu, J = 0, 1, 1
 kTArr = np.linspace(1.5, 3, TSize) * J    # kT scaled relative to J
-arrSize = 600                           # Number of steps to take for each M-C simulation
 fig1, ax1 = plt.subplots()
 fig2, ax2 = plt.subplots()
 fig3, ax3 = plt.subplots()
@@ -137,7 +137,7 @@ fig4, ax4 = plt.subplots()
 fig5, ax5 = plt.subplots()
 fig6, ax6 = plt.subplots()
 
-NArr = np.arange(8, 15, 1)              # Array that holds the values of N to be use
+NArr = np.arange(8, 17, 2)              # Array that holds the values of N to be use
 eArr = np.zeros((nSamp, TSize))
 sigEArr = np.zeros((nSamp, TSize))
 CMaxArr = np.zeros((len(NArr)))
@@ -155,10 +155,10 @@ for l in range(len(NArr)):
     tauC = tauCArr[:, l]
     CMaxArr[l] = kTArr[np.argmax(C.mean(axis=0))]
     if l % 1 == 0:
-        ax1.errorbar(kTArr, tauC.mean(axis=0), tauC.std(axis=0), label=r'$N=%i$' % N)
-        ax4.errorbar(kTArr, C.mean(axis=0), C.std(axis=0), label=r'$N=%i$' % N)
-        ax3.errorbar(kTArr, M.mean(axis=0), M.std(axis=0), label=r'$N=%i$' % N)
-        ax6.errorbar(kTArr, Chi.mean(axis=0), Chi.std(axis=0), label=r'$N=%i$' % N)
+        ax1.errorbar(kTArr, tauC, tauC, label=r'$N=%i$' % N)
+        ax4.errorbar(kTArr, C, C, label=r'$N=%i$' % N)
+        ax3.errorbar(kTArr, M[0], M[1], label=r'$N=%i$' % N)
+        ax6.errorbar(kTArr, Chi, Chi, label=r'$N=%i$' % N)
 x0 = [2, 4, 0.5]
 xOpt = op.minimize(lambda x: fitTc(CMaxArr, x, NArr), x0)
 print(xOpt.x)
