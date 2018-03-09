@@ -10,6 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize as op
 import multiprocessing as mp
+import pdb
 
 
 def movingAvg(arr, n):
@@ -103,27 +104,25 @@ def fitTc(Tc, x, NArr):
 
 def mainRun(kT):
     NSize = len(NArr)
-    sigEArr = np.zeros((NSize))
+    EArr = np.zeros((NSize, 2))
     MArr = np.zeros((NSize, 2))
-    tauC = np.zeros((NSize))
-    chiArr = np.zeros((NSize))
+    tauC = np.zeros((NSize, 2))
+    chiArr = np.zeros((NSize, 2))
     for j in range(NSize):
         N = NArr[j]
         print('N= %i, kT= %f' % (N, kT))
-        nRelax = 20 * N
-        arrSize = 2 * nRelax
+        nRelax = 5 * N
+        arrSize = 40 * N
         Mag = MCStepFast(N, H, mu, J, kT, arrSize)
         inMag = Mag[nRelax:].sum(axis=(1, 2))
-        sigEArr[j] = (meanEnergy(Mag[nRelax:], H, mu, J))[1]    # Standard deviation in total energy
-        MArr[j] = (np.abs(inMag).mean() / N**2, np.abs(inMag).std() / N**2)
-        chiArr[j] = (inMag.var()) / kT
+        EArr[j] = (meanEnergy(Mag[nRelax:], H, mu, J))    # Standard deviation in total energy
+        MArr[j] = np.array([np.abs(inMag).mean() / N**2, np.abs(inMag).std() / N**2])
+        chiArr[j, 0] = (inMag.var()) / kT
         for tau in range(1, arrSize-nRelax-1):
-            if np.abs(autoCorr(inMag, tau)) < np.exp(-1):
-                tauC[j] = tau - 0.5
+            if np.abs(autoCorr(Mag, tau)) < np.exp(-1):
+                tauC[j, 0] = tau - 0.5
                 break
-    C = (sigEArr**2)/(kT**2)
-
-    return([C, tauC, MArr, chiArr])
+    return(np.array([EArr, tauC, MArr, chiArr]))
 
 
 nSamp = 1                                # Number of samples to run
@@ -136,29 +135,33 @@ fig3, ax3 = plt.subplots()
 fig4, ax4 = plt.subplots()
 fig5, ax5 = plt.subplots()
 fig6, ax6 = plt.subplots()
+fig7, ax7 = plt.subplots()
 
-NArr = np.arange(8, 17, 2)              # Array that holds the values of N to be use
+NArr = np.arange(10, 20, 2)              # Array that holds the values of N to be use
 eArr = np.zeros((nSamp, TSize))
 sigEArr = np.zeros((nSamp, TSize))
 CMaxArr = np.zeros((len(NArr)))
 
-p = mp.Pool(len(kTArr))
-out = np.moveaxis(np.array(p.map(mainRun, kTArr)), 0, -1)
+p = mp.Pool(TSize)
+out = np.transpose(np.array(p.map(mainRun, kTArr)), (1, 2, 3, 0))
 print(out.shape)
-[CArr, tauCArr, MArr, chiArr] = out
-
+[EArr, tauCArr, MArr, chiArr] = out
+CArr = np.divide(EArr[:, 1, :]**2, kTArr**2)
 for l in range(len(NArr)):
     N = NArr[l]
-    C = CArr[:, l]
-    M = MArr[:, l]
-    Chi = chiArr[:, l]
-    tauC = tauCArr[:, l]
-    CMaxArr[l] = kTArr[np.argmax(C.mean(axis=0))]
+    E = EArr[l]
+    C = CArr[l]
+    M = MArr[l]
+    Chi = chiArr[l]
+    tauC = tauCArr[l]
+    print(tauC.shape)
+    CMaxArr[l] = kTArr[np.argmax(C)]
     if l % 1 == 0:
-        ax1.errorbar(kTArr, tauC, tauC, label=r'$N=%i$' % N)
-        ax4.errorbar(kTArr, C, C, label=r'$N=%i$' % N)
-        ax3.errorbar(kTArr, M[0], M[1], label=r'$N=%i$' % N)
-        ax6.errorbar(kTArr, Chi, Chi, label=r'$N=%i$' % N)
+        ax1.errorbar(kTArr, tauC[0], tauC[1], label=r'$N=%i$' % N)
+        ax2.errorbar(kTArr, E[0], E[1], label=r'$N=%i$' % N)
+        ax4.plot(kTArr, C, label=r'$N=%i$' % N)
+        ax3.errorbar(kTArr[::4], M[0, ::4], M[1, ::4], label=r'$N=%i$' % N)
+        ax6.errorbar(kTArr, Chi[0], Chi[1], label=r'$N=%i$' % N)
 x0 = [2, 4, 0.5]
 xOpt = op.minimize(lambda x: fitTc(CMaxArr, x, NArr), x0)
 print(xOpt.x)
@@ -174,7 +177,7 @@ ax5.plot(NArr, x0[0] + x0[1] * NArr**(-1/x0[2]))
 ax5.plot(NArr, 2/np.log(1 + np.sqrt(2))*np.ones(len(NArr)))
 ax5.errorbar(NArr, CMaxArr)
 
-ax2.plot(1/(NArr**2), CMaxArr)
+ax7.plot(1/(NArr**2), CMaxArr)
 """
 nSamp = 5
 MArr = np.zeros((nSamp, TSize))

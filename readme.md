@@ -21,3 +21,6 @@ The energy of a set of spins in a regular lattice in the presence of some magnet
 
 \begin{equation}  E=-J\sum_{<ij>} s_i s_j - H\mu \sum_{i=1}^{N^2} \label{eq:Hamil} \end{equation}
 
+# Results
+
+The main results of these investigation are shown in the graphs below, with acoompanying errors
