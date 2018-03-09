@@ -10,7 +10,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize as op
 import multiprocessing as mp
-import pdb
 
 
 def movingAvg(arr, n):
@@ -45,21 +44,22 @@ def MCStep(N, M, mu, J, kT):
     return(M)
 
 
-def MCStepFast(N, H, mu, J, kT, arrSize):
-    Mag = np.zeros((arrSize, N, N))
-    Mag[0] = (makeM(N, 0.5))
-    flipP = np.ones(5)
+def MCStepFast(N, H, mu, J, kTArr, arrSize):
+    Mag = np.zeros((arrSize, N, N, len(kTArr)))
+    for i in range(len(kTArr)):
+        Mag[0, :, :, i] = (makeM(N, 0.5))
+    flipP = np.ones((5, len(kTArr)))
     if H == 0:
-        for i in range(3, 5):
-            flipP[i] = np.exp(-2 * (2 * (i - 2)) / kT)   # cache the probability of flipping for each spin configuration
+        flipP = [[np.exp(-2 * (2 * i) / kT) if (i > 3) else 1 for kT in kTArr] for i in np.arange(-2, 3)]
     for arr in range(1, arrSize):
         """Performs each step of the MC technique, each sampling N^2=Ntot points in the lattice"""
         samples = np.random.choice(np.arange(N)-1, (N**2, 2))
         Mag[arr] = Mag[arr - 1]
         for [i, j] in samples:
-            if np.random.rand() < flipP[int((Mag[arr, i, j] * (Mag[arr, i + 1, j]
-                                             + Mag[arr, i - 1, j] + Mag[arr, i, j - 1] + Mag[arr, i, j + 1]))/2+2)]:
-                Mag[arr, i, j] *= -1
+            nSpins = np.int_((Mag[arr, i, j]*(Mag[arr, i+1, j]+Mag[arr, i-1, j]+Mag[arr, i, j-1]+Mag[arr, i, j+1])))
+            sCount = np.select([[(i == j) for i in nSpins] for j in range(5)], flipP)
+            rSamp = np.random.rand(len(kTArr))
+            Mag[arr, i, j] *= np.argmin(np.array([sCount, rSamp]), axis=0) * 2 - 1
     return(Mag)
 
 
@@ -68,7 +68,7 @@ def meanEnergy(Mag, H, mu, J):
     eng = -1. * Mag * mu * H - J / 2 * Mag * (np.roll(Mag, 1, axis=1) + np.roll(
         Mag, -1, axis=1) + np.roll(Mag, 1, axis=2) + np.roll(Mag, -1, axis=2))
     totEng = eng.sum(axis=(1, 2))
-    return([totEng.mean(), totEng.std()])
+    return(np.array([totEng.mean(axis=0), totEng.std(axis=0)]))
 
 
 def makeM(N, p):
@@ -81,15 +81,10 @@ def makeM(N, p):
         return(M)
 
 
-def autoCorr(inMag, tauArr):
+def autoCorr(inMag, tau):
     """Returns the correlation of the vector inMag for each value of tau in tauArr"""
-    MMag = inMag - inMag.mean()
-    if isinstance(tauArr, int):
-        tau = tauArr
-        return(np.mean(MMag[tau:] * MMag[:-tau]) / np.mean(MMag**2))
-    else:
-        return(np.array([np.mean(MMag[tau:] * MMag[:-tau]) / np.mean(MMag**2)
-                         for tau in tauArr]))
+    MMag = inMag - inMag.mean(axis=0)
+    return(np.mean(MMag[tau:] * MMag[:-tau]) / np.mean(MMag**2))
 
 
 def findTauc(inMag, initTau):
@@ -102,26 +97,24 @@ def fitTc(Tc, x, NArr):
     return(((Tc - Tc_inf - a * NArr**(-1/v))**2).sum())
 
 
-def mainRun(kT):
-    NSize = len(NArr)
-    EArr = np.zeros((NSize, 2))
-    MArr = np.zeros((NSize, 2))
-    tauC = np.zeros((NSize, 2))
-    chiArr = np.zeros((NSize, 2))
-    for j in range(NSize):
-        N = NArr[j]
-        print('N= %i, kT= %f' % (N, kT))
-        nRelax = 5 * N
-        arrSize = 40 * N
-        Mag = MCStepFast(N, H, mu, J, kT, arrSize)
-        inMag = Mag[nRelax:].sum(axis=(1, 2))
-        EArr[j] = (meanEnergy(Mag[nRelax:], H, mu, J))    # Standard deviation in total energy
-        MArr[j] = np.array([np.abs(inMag).mean() / N**2, np.abs(inMag).std() / N**2])
-        chiArr[j, 0] = (inMag.var()) / kT
-        for tau in range(1, arrSize-nRelax-1):
-            if np.abs(autoCorr(Mag, tau)) < np.exp(-1):
-                tauC[j, 0] = tau - 0.5
+def mainRun(N):
+    tauC = np.zeros((2, len(kTArr)))
+    chiArr = np.zeros((2, len(kTArr)))
+    print('N= %i' % (N))
+    nRelax = 5 * N
+    arrSize = 40 * N
+    Mag = MCStepFast(N, H, mu, J, kTArr, arrSize)
+    inMag = Mag[nRelax:].sum(axis=(1, 2))
+    EArr = np.array(meanEnergy(Mag[nRelax:], H, mu, J))    # Standard deviation in total energy
+    MArr = np.array([np.abs(inMag).mean(axis=0) / N**2, np.abs(inMag).std(axis=0) / N**2])
+    chiArr[0] = np.divide((inMag.var()), kTArr)
+    tauArr = range(1, arrSize-nRelax-1)
+    for i in range(TSize):
+        for tau in tauArr:
+            if np.abs(autoCorr(inMag[i], tau)) < np.exp(-1):
+                tauC[0, i] = tau - 0.5
                 break
+    print(EArr.shape, tauC.shape, MArr.shape, chiArr.shape)
     return(np.array([EArr, tauC, MArr, chiArr]))
 
 
@@ -137,13 +130,15 @@ fig5, ax5 = plt.subplots()
 fig6, ax6 = plt.subplots()
 fig7, ax7 = plt.subplots()
 
-NArr = np.arange(10, 20, 2)              # Array that holds the values of N to be use
+NArr = np.arange(10, 15, 1)              # Array that holds the values of N to be use
 eArr = np.zeros((nSamp, TSize))
 sigEArr = np.zeros((nSamp, TSize))
 CMaxArr = np.zeros((len(NArr)))
 
 p = mp.Pool(TSize)
-out = np.transpose(np.array(p.map(mainRun, kTArr)), (1, 2, 3, 0))
+out = np.array(p.map(mainRun, NArr))
+print(out.shape)
+out = np.transpose(out, (1, 0, 2, 3))
 print(out.shape)
 [EArr, tauCArr, MArr, chiArr] = out
 CArr = np.divide(EArr[:, 1, :]**2, kTArr**2)
