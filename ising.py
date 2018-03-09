@@ -44,22 +44,22 @@ def MCStep(N, M, mu, J, kT):
     return(M)
 
 
-def MCStepFast(N, H, mu, J, kTArr, arrSize):
-    Mag = np.zeros((arrSize, N, N, len(kTArr)))
-    for i in range(len(kTArr)):
-        Mag[0, :, :, i] = (makeM(N, 0.5))
-    flipP = np.ones((5, len(kTArr)))
+def MCStepFast(N, H, mu, J, kTArr, arrSize, TSize):
+    Mag = np.zeros((arrSize, N, N, TSize))
+    Mag[0] = (makeM(N, 0.5, TSize))
+    flipP = np.ones((5, TSize))
     if H == 0:
-        flipP = [[np.exp(-2 * (2 * i) / kT) if (i > 3) else 1 for kT in kTArr] for i in np.arange(-2, 3)]
+        flipP = np.array([[np.exp(-2 * (2 * (i - 2)) / kT) if (i > 2) else 1 for kT in kTArr] for i in np.arange(5)])
+        print(flipP)
     for arr in range(1, arrSize):
         """Performs each step of the MC technique, each sampling N^2=Ntot points in the lattice"""
         samples = np.random.choice(np.arange(N)-1, (N**2, 2))
         Mag[arr] = Mag[arr - 1]
         for [i, j] in samples:
             nSpins = np.int_((Mag[arr, i, j]*(Mag[arr, i+1, j]+Mag[arr, i-1, j]+Mag[arr, i, j-1]+Mag[arr, i, j+1])))
-            sCount = np.select([[(i == j) for i in nSpins] for j in range(5)], flipP)
-            rSamp = np.random.rand(len(kTArr))
-            Mag[arr, i, j] *= np.argmin(np.array([sCount, rSamp]), axis=0) * 2 - 1
+            sCount = flipP[(nSpins, np.arange(TSize))]
+            rSamp = np.random.rand(TSize)
+            Mag[arr, i, j] *= np.argmax(np.array([sCount, rSamp]), axis=0) * 2 - 1
     return(Mag)
 
 
@@ -71,14 +71,16 @@ def meanEnergy(Mag, H, mu, J):
     return(np.array([totEng.mean(axis=0), totEng.std(axis=0)]))
 
 
-def makeM(N, p):
+def makeM(N, p, TSize):
     """Initialises the spins in the system"""
+    ret = np.empty((N, N, TSize))
     if p == 1:
-        return(np.ones((N, N)))
+        return(np.ones((N, N, TSize)))
     else:
         M = np.concatenate((np.ones(int(N**2 * p)), -1 * np.ones(N**2 - int(N**2 * p))))
-        M = (np.random.permutation(M)).reshape((N, N))
-        return(M)
+        for i in range(TSize):
+            ret[:, :, i] = (np.random.permutation(M)).reshape((N, N))
+        return(ret)
 
 
 def autoCorr(inMag, tau):
@@ -98,12 +100,12 @@ def fitTc(Tc, x, NArr):
 
 
 def mainRun(N):
-    tauC = np.zeros((2, len(kTArr)))
-    chiArr = np.zeros((2, len(kTArr)))
+    tauC = np.zeros((2, TSize))
+    chiArr = np.zeros((2, TSize))
     print('N= %i' % (N))
     nRelax = 5 * N
     arrSize = 40 * N
-    Mag = MCStepFast(N, H, mu, J, kTArr, arrSize)
+    Mag = MCStepFast(N, H, mu, J, kTArr, arrSize, TSize)
     inMag = Mag[nRelax:].sum(axis=(1, 2))
     EArr = np.array(meanEnergy(Mag[nRelax:], H, mu, J))    # Standard deviation in total energy
     MArr = np.array([np.abs(inMag).mean(axis=0) / N**2, np.abs(inMag).std(axis=0) / N**2])
@@ -135,7 +137,7 @@ eArr = np.zeros((nSamp, TSize))
 sigEArr = np.zeros((nSamp, TSize))
 CMaxArr = np.zeros((len(NArr)))
 
-p = mp.Pool(TSize)
+p = mp.Pool(len(NArr))
 out = np.array(p.map(mainRun, NArr))
 print(out.shape)
 out = np.transpose(out, (1, 0, 2, 3))
