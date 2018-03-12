@@ -29,21 +29,6 @@ def delEnergy(M, H, mu, J, i, j, kT):
     return((ext + coup < 0) or (np.random.rand(1) < np.exp(-1 * (ext + coup) / (kT))))
 
 
-def MCStep(N, M, mu, J, kT):
-    """Performs each step of the MC technique, each sampling N^2=Ntot points in the lattice"""
-    """On average covers ~63 lattice sites (see readme for calculation)"""
-    samples = np.random.choice(np.arange(N)-1, (N**2, 2))
-    for [i, j] in samples:
-        # Calculate the change in energy change if the spin at i,j is flipped
-        s = M[i, j]
-        coup = 2 * s * (M[i + 1, j] + M[i - 1, j] + M[i, j - 1] + M[i, j + 1])  # spin coupling term
-        ext = 2 * mu * H * s  # field energy
-        if ((ext + coup < 0) or (np.random.rand(1) < np.exp(-1 * (ext + coup) / (kT)))):
-            # Flip the spin if change in  E<0 or probabilistically based on Boltzmann distribution
-            M[i, j] *= -1
-    return(M)
-
-
 def MCStepFast(N, H, mu, J, kTArr, arrSize, TSize):
     Mag = np.zeros((arrSize, N, N, TSize))
     Mag[0] = (makeM(N, 1, TSize))
@@ -59,12 +44,12 @@ def MCStepFast(N, H, mu, J, kTArr, arrSize, TSize):
     return(Mag)
 
 
-def meanEnergy(Mag, H, mu, J):
+def energy(Mag, H, mu, J):
     """Returns the mean energy of a set of spins Mag"""
     eng = -1. * Mag * mu * H - J / 2 * Mag * (np.roll(Mag, 1, axis=1) + np.roll(
         Mag, -1, axis=1) + np.roll(Mag, 1, axis=2) + np.roll(Mag, -1, axis=2))
     totEng = eng.sum(axis=(1, 2))
-    return(np.array([totEng.mean(axis=0), totEng.std(axis=0)]))
+    return(totEng)
 
 
 def makeM(N, p, TSize):
@@ -85,25 +70,32 @@ def autoCorr(inMag, tau):
     return(np.mean(MMag[tau:] * MMag[:-tau]) / np.mean(MMag**2))
 
 
-def findTauc(inMag, initTau):
-    """Find critical value of tau using root finding method"""
-    return(op.brentq((lambda tau: autoCorr(inMag, int(tau)) - np.exp(-1.)), 1, int(initTau)))
-
-
 def fitTc(Tc, x, NArr):
     [Tc_inf, a, v] = x
     return(((Tc - Tc_inf - a * NArr**(-1/v))**2).sum())
 
 
+def bootstrap(Mag, tauC, kT):
+    nSamp = 10
+    MagIndep = Mag[::tauC]
+    n = len(MagIndep)
+    samples = np.random.choice(n, (n, nSamp))
+    samples = energy(MagIndep[samples], H, mu, J)
+    C = np.divide(samples.var(axis=0), kT**2)
+    return([C.mean(axis=0), C.std(axis=0)])
+
+
 def mainRun(N):
     tauC = np.zeros((2, TSize))
+    CArr = np.zeros((2, TSize))
     chiArr = np.zeros((2, TSize))
     print('N= %i' % (N))
-    nRelax = N**2
-    arrSize = 4 * N**2
-    Mag = MCStepFast(N, H, mu, J, kTArr, arrSize, TSize)
-    inMag = Mag[nRelax:].sum(axis=(1, 2))
-    EArr = np.array(meanEnergy(Mag[nRelax::N], H, mu, J))    # Standard deviation in total energy
+    nRelax = 20 * N
+    arrSize = 100 * N
+    Mag = MCStepFast(N, H, mu, J, kTArr, arrSize, TSize)[nRelax:]
+    print(Mag.shape)
+    inMag = Mag.sum(axis=(1, 2))
+    EArr = np.array([energy(Mag, H, mu, J).mean(axis=0), energy(Mag, H, mu, J).std(axis=0)])
     MArr = np.array([np.abs(inMag).mean(axis=0) / N**2, np.abs(inMag).std(axis=0) / N**2])
     chiArr[0] = np.divide((inMag.var(axis=0)), kTArr)
     tauArr = range(1, arrSize-nRelax-1)
@@ -111,14 +103,15 @@ def mainRun(N):
         for tau in tauArr:
             if np.abs(autoCorr(inMag[:, i], tau)) < np.exp(-1):
                 tauC[0, i] = tau - 0.5
+                CArr[:, i] = bootstrap(Mag[:, :, :, i], tau, kTArr[i])
                 break
-    return(np.array([EArr, tauC, MArr, chiArr]))
+    return(np.array([EArr, tauC, MArr, chiArr, CArr]))
 
 
 nSamp = 1                                # Number of samples to run
-TSize = 100                              # Number of samples of temperature to be used
+TSize = 100                             # Number of samples of temperature to be used
 H, mu, J = 0, 1, 1
-kTArr = np.linspace(1.5, 3, TSize) * J    # kT scaled relative to J
+kTArr = np.linspace(1.8, 3, TSize) * J    # kT scaled relative to J
 fig1, ax1 = plt.subplots()
 fig2, ax2 = plt.subplots()
 fig3, ax3 = plt.subplots()
@@ -127,25 +120,26 @@ fig5, ax5 = plt.subplots()
 fig6, ax6 = plt.subplots()
 fig7, ax7 = plt.subplots()
 
-NArr = np.arange(10, 30, 2)              # Array that holds the values of N to be use
+NArr = np.arange(10, 30, 4)              # Array that holds the values of N to be use
+NSize = len(NArr)
 eArr = np.zeros((nSamp, TSize))
 sigEArr = np.zeros((nSamp, TSize))
-CMaxArr = np.zeros((len(NArr)))
+CMaxArr = np.zeros((NSize))
 
 flipP = np.ones((5, TSize))
 if H == 0:
     flipP = np.array([[np.exp(-2 * (2 * (i - 2)) / kT) if (i > 2) else 1 for kT in kTArr] for i in np.arange(5)])
 
-p = mp.Pool(len(NArr))
+p = mp.Pool(NSize)
 out = np.array(p.map(mainRun, NArr))
 out = np.transpose(out, (1, 0, 2, 3))
 print(out.shape)
-[EArr, tauCArr, MArr, chiArr] = out
-CArr = np.divide(EArr[:, 1, :]**2, kTArr**2)
-for l in range(len(NArr)):
+[EArr, tauCArr, MArr, chiArr, CArr] = out
+for l in range(NSize):
     N = NArr[l]
     E = EArr[l]
-    C = movingAvg(CArr[l], 2)
+    C = CArr[l]
+    print(C.shape)
     M = MArr[l]
     Chi = chiArr[l]
     tauC = tauCArr[l]
@@ -153,7 +147,7 @@ for l in range(len(NArr)):
     if l % 1 == 0:
         ax1.errorbar(kTArr, tauC[0], tauC[1], label=r'$N=%i$' % N)
         ax2.errorbar(kTArr, E[0], E[1], label=r'$N=%i$' % N)
-        ax4.plot(movingAvg(kTArr, 2), C, label=r'$N=%i$' % N)
+        ax4.errorbar(kTArr, C[0], C[1], label=r'$N=%i$' % N)
         ax3.errorbar(kTArr[::4], M[0, ::4], M[1, ::4], label=r'$N=%i$' % N)
         ax6.errorbar(kTArr, Chi[0], Chi[1], label=r'$N=%i$' % N)
 x0 = [2, 4, 0.5]
@@ -168,7 +162,7 @@ except RuntimeError:
 print(x0)
 
 ax5.plot(NArr, x0[0] + x0[1] * NArr**(-1/x0[2]))
-ax5.plot(NArr, 2/np.log(1 + np.sqrt(2))*np.ones(len(NArr)))
+ax5.plot(NArr, 2/np.log(1 + np.sqrt(2))*np.ones(NSize))
 ax5.errorbar(NArr, CMaxArr)
 
 ax7.plot(1/(NArr**2), CMaxArr)
@@ -189,7 +183,7 @@ print('N= {:d}, T_c= {:.2f}±{:.2f}'.format(N, CMaxArr.mean(), CMaxArr.std()))
 ax3.errorbar(kTArr, MArr.mean(axis=0), MArr.std(axis=0), label=r'$N=%i$' % N)
 ax2.errorbar(kTArr, eArr.mean(axis=0), eArr.std(axis=0), label=r'$N=%i$' % N)
 
-for l in range(len(NArr)):
+for l in range(NSize):
     N = NArr[l]
     for j in range(TSize):
         kT = kTArr[j]
