@@ -52,6 +52,7 @@ def energy(Mag, H, mu, J):
     return(totEng)
 
 
+
 def makeM(N, p, TSize):
     """Initialises the spins in the system"""
     ret = np.empty((N, N, TSize))
@@ -80,8 +81,9 @@ def bootstrap(Mag, tauC, kT):
     MagIndep = Mag[::tauC]
     n = len(MagIndep)
     samples = np.random.choice(n, (n, nSamp))
-    samples = energy(MagIndep[samples], H, mu, J)
-    C = np.divide(samples.var(axis=0), kT**2)
+    C = np.zeros(n)
+    for i in samples:
+        C[i] = np.divide(energy(MagIndep[samples[i]], H, mu, J).var(), kT**2)
     return([C.mean(axis=0), C.std(axis=0)])
 
 
