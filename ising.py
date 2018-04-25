@@ -41,7 +41,7 @@ def MCStepFast(N, H, mu, J, kTArr, arrSize, TSize):
             sCount = flipP[(nSpins, np.arange(TSize))]
             rSamp = np.random.rand(TSize)
             Mag[arr, i, j] *= np.argmax(np.array([sCount, rSamp]), axis=0) * 2 - 1
-    return(Mag)
+            return(Mag)
 
 
 def energy(Mag, H, mu, J):
@@ -50,6 +50,7 @@ def energy(Mag, H, mu, J):
         Mag, -1, axis=1) + np.roll(Mag, 1, axis=2) + np.roll(Mag, -1, axis=2))
     totEng = eng.sum(axis=(1, 2))
     return(np.array([totEng.mean(axis=0), totEng.std(axis=0)]))
+
 
 
 def makeM(N, p, TSize):
@@ -61,7 +62,7 @@ def makeM(N, p, TSize):
         M = np.concatenate((np.ones(int(N**2 * p)), -1 * np.ones(N**2 - int(N**2 * p))))
         for i in range(TSize):
             ret[:, :, i] = (np.random.permutation(M)).reshape((N, N))
-        return(ret.astype(np.int8))
+            return(ret.astype(np.int8))
 
 
 def autoCorr(inMag, tau):
@@ -80,7 +81,9 @@ def bootstrap(Mag, tauC, kT):
     MagIndep = Mag[::tauC]
     n = len(MagIndep)
     samples = np.random.choice(n, (n, nSamp))
-    C = energy(MagIndep[samples], H, mu, J)[1]**2 / kT**2
+    C = np.zeros(n)
+    for i in samples:
+        C[i] = np.divide(energy(MagIndep[samples[i]], H, mu, J).var(), kT**2)
     return([C.mean(axis=0), C.std(axis=0)])
 
 
@@ -144,14 +147,14 @@ for l in range(NSize):
         ax4.errorbar(kTArr, C[0], C[1], label=r'$N=%i$' % N)
         ax3.errorbar(kTArr[::4], M[0, ::4], M[1, ::4], label=r'$N=%i$' % N)
         ax6.errorbar(kTArr, Chi[0], Chi[1], label=r'$N=%i$' % N)
-x0 = [2, 4, 0.5]
-xOpt = op.minimize(lambda x: fitTc(CMaxArr, x, NArr), x0)
-print(xOpt.x)
-try:
-    xCF, xCov = op.curve_fit((lambda NArr, Tc_inf, a, v: Tc_inf + a * NArr**(-1/v)), NArr, CMaxArr, x0)
-    x0 = xCF
-except RuntimeError:
-    x0 = xOpt.x
+        x0 = [2, 4, 0.5]
+        xOpt = op.minimize(lambda x: fitTc(CMaxArr, x, NArr), x0)
+        print(xOpt.x)
+        try:
+            xCF, xCov = op.curve_fit((lambda NArr, Tc_inf, a, v: Tc_inf + a * NArr**(-1/v)), NArr, CMaxArr, x0)
+            x0 = xCF
+        except RuntimeError:
+            x0 = xOpt.x
 
 print(x0)
 
