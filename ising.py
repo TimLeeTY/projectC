@@ -92,8 +92,8 @@ def mainRun(N):
     CArr = np.zeros((2, TSize))
     chiArr = np.zeros((2, TSize))
     print('N= %i' % (N))
-    nRelax = 20 * N
-    arrSize = 100 * N
+    nRelax = 50 * N
+    arrSize = 1000 * N
     Mag = MCStepFast(N, H, mu, J, kTArr, arrSize, TSize)[nRelax:]
     print(Mag.shape)
     inMag = Mag.sum(axis=(1, 2))
@@ -167,7 +167,7 @@ ax5.plot(NArr, x0[0] + x0[1] * NArr**(-1/x0[2]))
 ax5.plot(NArr, 2/np.log(1 + np.sqrt(2))*np.ones(NSize))
 ax5.errorbar(NArr, CMaxArr)
 
-ax7.plot(1/(NArr**2), CMaxArr)
+ax7.plot(1/(NArr), CMaxArr)
 """
 nSamp = 5
 MArr = np.zeros((nSamp, TSize))
