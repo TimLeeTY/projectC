@@ -9,7 +9,6 @@ N x N lattice
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize as op
-import multiprocessing as mp
 
 
 def movingAvg(arr, n):
@@ -17,40 +16,6 @@ def movingAvg(arr, n):
     csum = arr.cumsum()
     csum[n:] = csum[n:] - csum[:-n]
     return(csum[n - 1:] / n)
-
-
-def delEnergy(M, H, mu, J, i, j, kT):
-    """Calculate the change in energy change if the spin at i,j is flipped"""
-    s = M[i, j]
-    coup = 2 * s * (M[i + 1, j] + M[i - 1, j] + M[i, j - 1] +
-                    M[i, j + 1])  # spin coupling term
-    ext = 2 * mu * H * s  # field energy
-    """Flip the spin if change in  E<0 or probabilistically based on Boltzmann distribution"""
-    return((ext + coup < 0) or (np.random.rand(1) < np.exp(-1 * (ext + coup) / (kT))))
-
-
-def MCStepFast(N, H, mu, J, kTArr, arrSize, TSize):
-    Mag = np.zeros((arrSize, N, N, TSize))
-    Mag[0] = (makeM(N, 1, TSize))
-    for arr in range(1, arrSize):
-        """Performs each step of the MC technique, each sampling N^2=Ntot points in the lattice"""
-        samples = np.random.choice(np.arange(N)-1, (N**2, 2))
-        Mag[arr] = Mag[arr - 1]
-        for [i, j] in samples:
-            nSpins = np.int_((Mag[arr, i, j]*(Mag[arr, i+1, j]+Mag[arr, i-1, j]+Mag[arr, i, j-1]+Mag[arr, i, j+1]))/2+2)
-            sCount = flipP[(nSpins, np.arange(TSize))]
-            rSamp = np.random.rand(TSize)
-            Mag[arr, i, j] *= np.argmax(np.array([sCount, rSamp]), axis=0) * 2 - 1
-    return(Mag)
-
-
-def energy(Mag, H, mu, J):
-    """Returns the mean energy of a set of spins Mag"""
-    eng = -1. * Mag * mu * H - J / 2 * Mag * (np.roll(Mag, 1, axis=1) + np.roll(
-        Mag, -1, axis=1) + np.roll(Mag, 1, axis=2) + np.roll(Mag, -1, axis=2))
-    totEng = eng.sum(axis=(1, 2))
-    return(totEng)
-
 
 
 def makeM(N, p, TSize):
@@ -76,41 +41,71 @@ def fitTc(Tc, x, NArr):
     return(((Tc - Tc_inf - a * NArr**(-1/v))**2).sum())
 
 
-def bootstrap(Mag, tauC, kT):
+def bootstrap(EArr, tauC, kT):
     nSamp = 10
-    MagIndep = Mag[::tauC]
-    n = len(MagIndep)
+    EIndep = EArr[::tauC]
+    n = len(EIndep)
     samples = np.random.choice(n, (n, nSamp))
     C = np.zeros(n)
     for i in samples:
-        C[i] = np.divide(energy(MagIndep[samples[i]], H, mu, J).var(), kT**2)
+        C[i] = np.divide(EIndep[samples[i]].var(), kT**2)
     return([C.mean(axis=0), C.std(axis=0)])
 
 
-def mainRun(N):
-    tauC = np.zeros((2, TSize))
-    CArr = np.zeros((2, TSize))
-    chiArr = np.zeros((2, TSize))
-    print('N= %i' % (N))
-    nRelax = 50 * N
-    arrSize = 1000 * N
-    Mag = MCStepFast(N, H, mu, J, kTArr, arrSize, TSize)[nRelax:]
-    print(Mag.shape)
-    inMag = Mag.sum(axis=(1, 2))
-    EArr = np.array([energy(Mag, H, mu, J).mean(axis=0), energy(Mag, H, mu, J).std(axis=0)])
-    MArr = np.array([np.abs(inMag).mean(axis=0) / N**2, np.abs(inMag).std(axis=0) / N**2])
-    chiArr[0] = np.divide((inMag.var(axis=0)), kTArr)
-    tauArr = range(1, arrSize-nRelax-1)
-    for i in range(TSize):
-        for tau in tauArr:
-            if np.abs(autoCorr(inMag[:, i], tau)) < np.exp(-1):
-                tauC[0, i] = tau - 0.5
-                CArr[:, i] = bootstrap(Mag[:, :, :, i], tau, kTArr[i])
-                break
-    return(np.array([EArr, tauC, MArr, chiArr, CArr]))
+def energy(Mag, H, mu, J):
+    """Returns the mean energy of a set of spins Mag"""
+    eng = -1. * Mag * mu * H - J / 2 * Mag * (np.roll(Mag, 1, axis=1) + np.roll(
+        Mag, -1, axis=1) + np.roll(Mag, 1, axis=2) + np.roll(Mag, -1, axis=2))
+    totEng = eng.sum(axis=(1, 2))
+    return(totEng)
 
 
-nSamp = 1                                # Number of samples to run
+def energyAlt(Mag, H, mu, J):
+    """Returns the mean energy of a set of spins Mag"""
+    eng = -1. * Mag * mu * H - J / 2 * Mag * (np.roll(Mag, 1, axis=1) + np.roll(
+        Mag, -1, axis=1) + np.roll(Mag, 1, axis=0) + np.roll(Mag, -1, axis=0))
+    totEng = eng.sum(axis=(0, 1))
+    return(totEng)
+
+
+def MCStepFastAlt(N, H, mu, J, kTArr, arrSize, TSize):
+    E = np.zeros((arrSize, TSize))
+    Mag = np.zeros((arrSize, N, N, TSize), dtype=np.int8)
+    Mag[0] = (makeM(N, 1, TSize))
+    E[0] = energyAlt(Mag[0], H, mu, J)
+    for arr in range(1, arrSize):
+        if arr % 100 == 0:
+            print(arr)
+        """Performs each step of the MC technique, each sampling N^2=Ntot points in the lattice"""
+        samples = np.random.choice(np.arange(N)-1, (N**2, 2))
+        Mag[arr] = Mag[arr - 1]
+        for [i, j] in samples:
+            nSpins = np.int_((Mag[arr, i, j]*(Mag[arr, i+1, j]+Mag[arr, i-1, j]+Mag[arr, i, j-1]+Mag[arr, i, j+1]))/2+2)
+            sCount = flipP[(nSpins, np.arange(TSize))]
+            rSamp = np.random.rand(TSize)
+            Mag[arr, i, j] *= np.argmax(np.array([sCount, rSamp]), axis=0) * 2 - 1
+        E[arr] = energyAlt(Mag[arr], H, mu, J)
+    return(Mag[nRelax:], E[nRelax:])
+
+
+def MCStepFast(N, H, mu, J, kTArr, arrSize, TSize):
+    Mag = np.zeros((arrSize, N, N, TSize), dtype=np.int8)
+    Mag[0] = (makeM(N, 1, TSize))
+    for arr in range(1, arrSize):
+        if arr % 100 == 0:
+            print(arr)
+        """Performs each step of the MC technique, each sampling N^2=Ntot points in the lattice"""
+        samples = np.random.choice(np.arange(N)-1, (N**2, 2))
+        Mag[arr] = Mag[arr - 1]
+        for [i, j] in samples:
+            nSpins = np.int_((Mag[arr, i, j]*(Mag[arr, i+1, j]+Mag[arr, i-1, j]+Mag[arr, i, j-1]+Mag[arr, i, j+1]))/2+2)
+            sCount = flipP[(nSpins, np.arange(TSize))]
+            rSamp = np.random.rand(TSize)
+            Mag[arr, i, j] *= np.argmax(np.array([sCount, rSamp]), axis=0) * 2 - 1
+    EArr = energy(Mag, H, mu, J)
+    return(Mag[nRelax:], EArr[nRelax:])
+
+
 TSize = 100                             # Number of samples of temperature to be used
 H, mu, J = 0, 1, 1
 kTArr = np.linspace(1.8, 3, TSize) * J    # kT scaled relative to J
@@ -122,36 +117,46 @@ fig5, ax5 = plt.subplots()
 fig6, ax6 = plt.subplots()
 fig7, ax7 = plt.subplots()
 
-NArr = np.arange(10, 30, 4)              # Array that holds the values of N to be use
+NArr = np.arange(10, 50, 5)              # Array that holds the values of N to be use
 NSize = len(NArr)
-eArr = np.zeros((nSamp, TSize))
-sigEArr = np.zeros((nSamp, TSize))
-CMaxArr = np.zeros((NSize))
+CMaxArr = np.zeros(NSize)
 
 flipP = np.ones((5, TSize))
 if H == 0:
     flipP = np.array([[np.exp(-2 * (2 * (i - 2)) / kT) if (i > 2) else 1 for kT in kTArr] for i in np.arange(5)])
 
-p = mp.Pool(NSize)
-out = np.array(p.map(mainRun, NArr))
-out = np.transpose(out, (1, 0, 2, 3))
-print(out.shape)
-[EArr, tauCArr, MArr, chiArr, CArr] = out
-for l in range(NSize):
-    N = NArr[l]
-    E = EArr[l]
-    C = CArr[l]
-    print(C.shape)
-    M = MArr[l]
-    Chi = chiArr[l]
-    tauC = tauCArr[l]
-    CMaxArr[l] = kTArr[np.argmax(C)]+(kTArr[0]-kTArr[1])/2
-    if l % 1 == 0:
-        ax1.errorbar(kTArr, tauC[0], tauC[1], label=r'$N=%i$' % N)
-        ax2.errorbar(kTArr, E[0], E[1], label=r'$N=%i$' % N)
-        ax4.errorbar(kTArr, C[0], C[1], label=r'$N=%i$' % N)
-        ax3.errorbar(kTArr[::4], M[0, ::4], M[1, ::4], label=r'$N=%i$' % N)
-        ax6.errorbar(kTArr, Chi[0], Chi[1], label=r'$N=%i$' % N)
+for j in range(NSize):
+    N = NArr[j]
+    tauC = np.zeros((2, TSize))
+    CArr = np.zeros((2, TSize))
+    chiArr = np.zeros((2, TSize))
+    print('N= %i' % (N))
+    nRelax = 20 * N
+    arrSize = 10000
+    [Mag, E] = MCStepFastAlt(N, H, mu, J, kTArr, arrSize, TSize)
+    print(Mag.shape)
+    inMag = Mag.sum(axis=(1, 2))
+    EArr = np.array([E.mean(axis=0), E.std(axis=0)])
+    MArr = np.array([np.abs(inMag).mean(axis=0) / N**2, np.abs(inMag).std(axis=0) / N**2])
+    chiArr[0] = np.divide((inMag.var(axis=0)), kTArr)
+    tauArr = range(1, arrSize-nRelax-1)
+    for i in range(TSize):
+        for tau in tauArr:
+            if np.abs(autoCorr(inMag[:, i], tau)) < np.exp(-1):
+                tauC[0, i] = tau - 0.5
+                CArr[:, i] = bootstrap(E[:, i], tau, kTArr[i])
+                break
+    E = EArr
+    C = CArr
+    M = MArr
+    Chi = chiArr
+    CMaxArr[j] = kTArr[np.argmax(movingAvg(CArr, 3))+1]
+    ax1.errorbar(kTArr, tauC[0], tauC[1], label=r'$N=%i$' % N)
+    ax2.errorbar(kTArr, EArr[0], EArr[1], label=r'$N=%i$' % N)
+    ax4.errorbar(kTArr, C[0], C[1], label=r'$N=%i$' % N)
+    ax3.errorbar(kTArr[::4], M[0, ::4], M[1, ::4], label=r'$N=%i$' % N)
+    ax6.errorbar(kTArr, chiArr[0], chiArr[1], label=r'$N=%i$' % N)
+
 x0 = [2, 4, 0.5]
 xOpt = op.minimize(lambda x: fitTc(CMaxArr, x, NArr), x0)
 print(xOpt.x)
@@ -168,47 +173,6 @@ ax5.plot(NArr, 2/np.log(1 + np.sqrt(2))*np.ones(NSize))
 ax5.errorbar(NArr, CMaxArr)
 
 ax7.plot(1/(NArr), CMaxArr)
-"""
-nSamp = 5
-MArr = np.zeros((nSamp, TSize))
-eArr = np.zeros((nSamp, TSize))
-N = 10
-for j in range(TSize):
-    kT = kTArr[j]
-    print('N= %i, kT= %f' % (N, kT))
-    for i in range(nSamp):
-        Mag = MCStepFast(N, H, mu, J, kT, arrSize)
-        inMag = Mag[nRelax:].sum(axis=(1, 2))
-        eArr[i, j] = (meanEnergy(Mag[nRelax:], H, mu, J))[0]
-        MArr[i, j] = (inMag.mean())
-print('N= {:d}, T_c= {:.2f}±{:.2f}'.format(N, CMaxArr.mean(), CMaxArr.std()))
-ax3.errorbar(kTArr, MArr.mean(axis=0), MArr.std(axis=0), label=r'$N=%i$' % N)
-ax2.errorbar(kTArr, eArr.mean(axis=0), eArr.std(axis=0), label=r'$N=%i$' % N)
-
-for l in range(NSize):
-    N = NArr[l]
-    for j in range(TSize):
-        kT = kTArr[j]
-        print('N= %i, kT= %f' % (N, kT))
-        for i in range(nSamp):
-            #t0 = time.clock()
-            Mag = MCStepFast(N, H, mu, J, kT, arrSize)
-            #tf = time.clock()
-            inMag = Mag[nRelax:].sum(axis=(1, 2))
-            sigEArr[i, j] = (meanEnergy(Mag[nRelax:], H, mu, J))[1]/kT    # Standard deviation in total energy
-            for tau in range(1, arrSize-nRelax-1):
-                if np.abs(autoCorr(inMag, tau)) < np.exp(-1):
-                    tauC[i, j] = tau - 0.5
-                    break
-            #tf2 = time.clock()
-            #print(tf - t0, tf2 - t0)
-    C = (sigEArr**2)                                           # Heat capacity from
-    if N % 2 == 0:
-        ax1.errorbar(kTArr, tauC.mean(axis=0), tauC.std(axis=0), label=r'$N=%i$' % N)
-        ax4.errorbar(kTArr, C.mean(axis=0), C.std(axis=0), label=r'$N=%i$' % N)
-    for i in range(nSamp):
-        CMaxArr[i, l] = kTArr[np.argmax(C[i])]
-"""
 
 ax1.legend()
 ax2.legend()
