@@ -30,9 +30,9 @@ def makeM(N, p, TSize):
         return(ret)
 
 
-def autoCorr(inMag, tau):
-    """Returns the correlation of the vector inMag for each value of tau in tauArr"""
-    MMag = inMag - inMag.mean(axis=0)
+def autoCorr(totMag, tau):
+    """Returns the correlation of the vector totMag a value of tau"""
+    MMag = totMag - totMag.mean(axis=0)
     return(np.mean(MMag[tau:] * MMag[:-tau]) / np.mean(MMag**2))
 
 
@@ -41,15 +41,26 @@ def fitTc(Tc, x, NArr):
     return(((Tc - Tc_inf - a * NArr**(-1/v))**2).sum())
 
 
+def fitC(CFit, TArr):
+    [Tc, a, b] = CFit
+    Tlow = TArr[np.where(TArr < Tc)]
+    Thigh = TArr[np.where(TArr >= Tc)]
+    out = np.concatenate((a*(-np.log((Tc-Tlow)/Tc)), b*(-np.log((Thigh-Tc)/Tc))))
+    return(out)
+
+
 def bootstrap(EArr, tauC, kT):
     nSamp = 10
-    EIndep = EArr[::tauC]
-    n = len(EIndep)
-    samples = np.random.choice(n, (n, nSamp))
-    C = np.zeros(n)
-    for i in samples:
-        C[i] = np.divide(EIndep[samples[i]].var(), kT**2)
-    return([C.mean(axis=0), C.std(axis=0)])
+    Cout = np.zeros((tauC, 2))
+    for j in range(tauC):
+        EIndep = EArr[j::tauC]
+        n = len(EIndep)
+        C = np.zeros(n)
+        samples = np.random.choice(n, (n, nSamp))
+        for i in samples:
+            C[i] = np.divide(EIndep[samples[i]].var(), kT**2)/N**2
+        Cout[j] = [C.mean(axis=0), C.std(axis=0)]
+    return(Cout.mean(axis=0))
 
 
 def energy(Mag, H, mu, J):
@@ -85,7 +96,9 @@ def MCStepFastAlt(N, H, mu, J, kTArr, arrSize, TSize):
             rSamp = np.random.rand(TSize)
             Mag[arr, i, j] *= np.argmax(np.array([sCount, rSamp]), axis=0) * 2 - 1
         E[arr] = energyAlt(Mag[arr], H, mu, J)
-    return(Mag[nRelax:], E[nRelax:])
+    if N == 25:
+        plt.plot(Mag[:, :, :, 50].sum(axis=(1, 2)))
+    return(Mag[nRelax:].sum(axis=(1, 2)), E[nRelax:])
 
 
 def MCStepFast(N, H, mu, J, kTArr, arrSize, TSize):
@@ -103,12 +116,13 @@ def MCStepFast(N, H, mu, J, kTArr, arrSize, TSize):
             rSamp = np.random.rand(TSize)
             Mag[arr, i, j] *= np.argmax(np.array([sCount, rSamp]), axis=0) * 2 - 1
     EArr = energy(Mag, H, mu, J)
-    return(Mag[nRelax:], EArr[nRelax:])
+    return(Mag.sum(axis=(1, 2))[nRelax:], EArr[nRelax:])
 
 
 TSize = 100                             # Number of samples of temperature to be used
 H, mu, J = 0, 1, 1
-kTArr = np.linspace(1.8, 3, TSize) * J    # kT scaled relative to J
+kTArr = np.linspace(1.6, 3, TSize) * J    # kT scaled relative to J
+kTArrFit = kTArr[np.where((kTArr < 2.5) & (kTArr > 2))]    # kT scaled relative to J
 fig1, ax1 = plt.subplots()
 fig2, ax2 = plt.subplots()
 fig3, ax3 = plt.subplots()
@@ -117,7 +131,7 @@ fig5, ax5 = plt.subplots()
 fig6, ax6 = plt.subplots()
 fig7, ax7 = plt.subplots()
 
-NArr = np.arange(10, 50, 5)              # Array that holds the values of N to be use
+NArr = np.arange(10, 60, 10)              # Array that holds the values of N to be use
 NSize = len(NArr)
 CMaxArr = np.zeros(NSize)
 
@@ -131,30 +145,30 @@ for j in range(NSize):
     CArr = np.zeros((2, TSize))
     chiArr = np.zeros((2, TSize))
     print('N= %i' % (N))
-    nRelax = 20 * N
-    arrSize = 10000
-    [Mag, E] = MCStepFastAlt(N, H, mu, J, kTArr, arrSize, TSize)
-    print(Mag.shape)
-    inMag = Mag.sum(axis=(1, 2))
+    nRelax = 5000
+    arrSize = 5000*10
+    [totMag, E] = MCStepFastAlt(N, H, mu, J, kTArr, arrSize, TSize)
+    print(totMag.shape)
     EArr = np.array([E.mean(axis=0), E.std(axis=0)])
-    MArr = np.array([np.abs(inMag).mean(axis=0) / N**2, np.abs(inMag).std(axis=0) / N**2])
-    chiArr[0] = np.divide((inMag.var(axis=0)), kTArr)
+    MArr = np.array([np.abs(totMag).mean(axis=0) / N**2, np.abs(totMag).std(axis=0) / N**2])
+    chiArr[0] = np.divide((totMag.var(axis=0)), kTArr)
     tauArr = range(1, arrSize-nRelax-1)
     for i in range(TSize):
         for tau in tauArr:
-            if np.abs(autoCorr(inMag[:, i], tau)) < np.exp(-1):
+            if np.abs(autoCorr(totMag[:, i], tau)) < np.exp(-1):
                 tauC[0, i] = tau - 0.5
                 CArr[:, i] = bootstrap(E[:, i], tau, kTArr[i])
+                print('N=%f, T=%f, tau=%i' % (N, kTArr[i], tau))
                 break
-    E = EArr
-    C = CArr
-    M = MArr
-    Chi = chiArr
     CMaxArr[j] = kTArr[np.argmax(movingAvg(CArr, 3))+1]
+    CFit0 = [2.3, 0, 0]
+    CFit = op.minimize(lambda x: ((fitC(x, kTArrFit)-CArr[0][np.where((kTArr < 2.5) & (kTArr > 2))])**2).sum(), CFit0)
+    print(CFit.x)
     ax1.errorbar(kTArr, tauC[0], tauC[1], label=r'$N=%i$' % N)
     ax2.errorbar(kTArr, EArr[0], EArr[1], label=r'$N=%i$' % N)
-    ax4.errorbar(kTArr, C[0], C[1], label=r'$N=%i$' % N)
-    ax3.errorbar(kTArr[::4], M[0, ::4], M[1, ::4], label=r'$N=%i$' % N)
+    ax4.errorbar(kTArr, CArr[0], CArr[1], label=r'$N=%i$' % N)
+    ax4.plot(kTArrFit, fitC(CFit.x, kTArrFit))
+    ax3.errorbar(kTArr[::4], MArr[0, ::4], MArr[1, ::4], label=r'$N=%i$' % N)
     ax6.errorbar(kTArr, chiArr[0], chiArr[1], label=r'$N=%i$' % N)
 
 x0 = [2, 4, 0.5]
