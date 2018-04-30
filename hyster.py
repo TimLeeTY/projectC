@@ -1,3 +1,9 @@
+"""
+Project C: The Ising Model of a Ferromagnet
+-------------------------------------------
+Plots hysteresis loops for H varying between -1 to 1
+plots corresponding energy graphs also
+"""
 import numpy as np
 import matplotlib.pyplot as plt
 

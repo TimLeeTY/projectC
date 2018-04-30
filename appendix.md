@@ -9,7 +9,6 @@ header-includes:
 
 ```
 """
-"""
 Project C: The Ising Model of a Ferromagnet
 -------------------------------------------
 Finds properties of a Ferromagnet using the Ising model, sampling spins at
@@ -328,6 +327,7 @@ plt.show()
 \newpage
 
 # Appendix D: `TcPlot.py`
+
 ```
 """
 Project C: The Ising Model of a Ferromagnet
@@ -513,7 +513,9 @@ plt.show()
 ```
 \newpage
 
+
 # Appendix E: `hyst.py`
+
 ```
 """
 Project C: The Ising Model of a Ferromagnet
