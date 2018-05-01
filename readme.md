@@ -149,6 +149,13 @@ Given $n$ uncorrelated states (by taking samples $\tau_\mathrm{c}$ steps apart),
 
 To show how the total magnetisation varied with some nonzero external field, $H$ was varied between the range $[-1. 1]$ in a linear fashion (triangle wave) and the resultant total magnetisation and energy were plotted as a function of $H$. We incremented $H$ sufficiently slowly to ensure equilibrium is reached within a few MC steps between each transition, 10 MC steps were performed between changes in $H$.
 
+## Performance
+
+Due to the large $N$ used (up to 55), the whole programme takes ~5 hours to run if ran separately. However, as most results are written out to separate `.csv` files, we could easily run the code for multiple values of $N$ at once. Initially, to speed up calculations, the `multiprocessing` package was used to parallelise the programme, however, it rendered the PC unusable and was therefore ultimately abandoned.
+
+In an attempt the lower the computation cost of each MC step, the probabilities $\exp(-\beta\Delta E)$ were stored separately in an array to prevent having to repeat the same calculation multiple times. However, this did not prove to speed up the process much suggesting that the `python` interpreter either knows to stash these calculations automatically, or the retrieval of values from an array is slower than the calculation of an exponent (the former of which sounds more plausible).
+
+Finally, the code was \`vectorised' such that the MC steps for multiple values of $T$ would be computed in unison. This was perhaps the most notable improvement, exemplifying the infamously inefficient for loops in `python`.
 
 # Results
 
@@ -157,6 +164,7 @@ To show how the total magnetisation varied with some nonzero external field, $H$
 We first consider how the total magnetisation of the system evolves in time if the initial spins are chosen randomly.
 
 \begin{figure}[H]
+\vspace{-10pt}
 \captionsetup{width=0.8\textwidth}
 \centering
 {\includegraphics[width=3.5in]{./Mag/Mag.pdf}}
@@ -205,6 +213,7 @@ Close to the critical temperature, small amounts of ordering can be seen at equi
 If instead we initialise the system with a homogeneous configuration, the problem with zone boundaries vanishes as the system starts off in its ground state. Furthermore, for supercritical temperatures, the rate at which the system thermalises is not hindered, demonstrated using a $50\times 50$ system below in figure \ref{fig:spinHomo} below:
 
 \begin{figure} [H]
+\vspace{-10pt}
   \centering
 	\captionsetup{width=0.95\textwidth}
   \subfloat[1 step]{
@@ -215,6 +224,7 @@ If instead we initialise the system with a homogeneous configuration, the proble
     \includegraphics[width=2in]{./spin/T40-arr19ones.pdf} \label{singleError}}
   \caption{Plot of the spin orientations within a $50\times50$ matrix at $T = 4$ after 1, 2, and 20 steps, starting from a homogeneous configuration.}
   \label{fig:spinHomo}
+\vspace{-10pt}
 \end{figure}
 
 It is abundantly clear that the system reaches equilibrium within 20 steps at $T=4$.
@@ -228,11 +238,13 @@ We move on to the mean magnetisation and energy of a system in equilibrium and h
 Firstly, we must acknowledge that taking a mean over the total magnetisation will always be 0 given a long enough time for finite lattices and nonzero $T$ (finite probability of whole lattice flipping). To overcome this, we find the average over the absolute total magnetisation instead.
 
 \begin{figure}[H]
+\vspace{-10pt}
 \captionsetup{width=0.8\textwidth}
 \centering
 {\includegraphics[width=3.5in]{3.pdf}}
 \caption{How the mean of the absolute magnetisation of a system of $N\times N$ spins depends on temperature plotted for $N=15$, 35, and 55. The highlighted region is the area in which the mean magnetisation drops the most rapidly for $N=55$, giving a rudimentary estimate for $T_\mathrm{c}$. Some error bars were omitted to maintain readability.}
 \label{fig:meanMag}
+\vspace{-10pt}
 \end{figure}
 
 We expect the total magnetisation to drop around the critical point (highlighted region in figure \ref{fig:meanMag}). For the larger $N$, this drop is more defined, meaning we are able to find $T_\mathrm{c}$ more accurately. For the $N=55$ case demonstrated in figure \ref{fig:meanMag}, $T_\mathrm{c} = 2.30\pm0.05$. Furthermore, we can see that the fluctuation in magnetisation (as shown by the error bars) is much greater for smaller lattices as well. 
@@ -240,11 +252,13 @@ We expect the total magnetisation to drop around the critical point (highlighted
 Next, we have the energy per spin as a function of temperature. The total energy was normalised by the size of the matrix to aid comparison between different $N$.
 
 \begin{figure}[h]
+\vspace{-10pt}
 \captionsetup{width=0.8\textwidth}
 \centering
 {\includegraphics[width=3.5in]{2.pdf}}
 \caption{How total energy of a system of $N\times N$ spins depends on temperature plotted for $N=15$, 35 and 55. Some error bars were omitted to maintain readability.}
 \label{fig:totEng}
+\vspace{-10pt}
 \end{figure}
 
 Unlike the mean magnetisation, the energy of the system does not exhibit a sharp transition around the critical temperature. The difference between the two sizes of lattice also does not appear to greatly affect the average energy per site. Note that for low temperatures, the energy per site tends towards $-2J$ reinforcing the fact that spins tend to be fully aligned at low temperatures (4 neighbours times $1/2$ to avoid double counting). The main difference between the two cases is the size of fluctuations that occur, where much like the mean magnetisation case, larger lattices give rise to smaller fluctuations.
@@ -357,7 +371,7 @@ Fortunately, at high temperatures, the thermalisation of the system is much less
 
 ## Corrections for $\chi$ \label{sec:chiDiss}
 
-As previously mentioned, if we applied equation \ref{eq:calc_obsv} directly, $\chi$ would be skewed towards lower temperatures. This resulted from the finite probability for all spins to flip at subcritical equilibria (i.e.\ for ferromagnetic systems):
+As previously mentioned, if we applied equation \ref{eq:calc_obsv} directly, $\chi$ would be skewed towards lower temperatures. This resulted from the finite probability for all spins to flip simultaneously at subcritical temperatures:
 \begin{equation}
     \begin{aligned}
         P_\mathrm{flip} & \sim \prod_{i=1}^{N^2}\exp(-4\beta J) \\
